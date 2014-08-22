@@ -1,0 +1,2085 @@
+/compiler/main/DynFlags.hs b/compiler/main/DynFlags.hs
+--- a/compiler/main/DynFlags.hs
++++ b/compiler/main/DynFlags.hs
+@@ -553,6 +553,7 @@
+    | Opt_MultiParamTypeClasses
+    | Opt_NullaryTypeClasses
+    | Opt_FunctionalDependencies
++   | Opt_DysfunctionalDependencies
+    | Opt_UnicodeSyntax
+    | Opt_ExistentialQuantification
+    | Opt_MagicHash
+@@ -2871,6 +2872,7 @@
+   ( "NullaryTypeClasses",               Opt_NullaryTypeClasses,
+     deprecatedForExtension "MultiParamTypeClasses" ),
+   ( "FunctionalDependencies",           Opt_FunctionalDependencies, nop ),
++  ( "DysfunctionalDependencies",        Opt_DysfunctionalDependencies, nop ),
+   ( "GeneralizedNewtypeDeriving",       Opt_GeneralizedNewtypeDeriving, setGenDeriving ),
+   ( "OverlappingInstances",             Opt_OverlappingInstances, nop ),
+   ( "UndecidableInstances",             Opt_UndecidableInstances, nop ),
+@@ -2927,6 +2929,7 @@
+     , (Opt_ExistentialQuantification, turnOn, Opt_ExplicitForAll)
+     , (Opt_FlexibleInstances,         turnOn, Opt_TypeSynonymInstances)
+     , (Opt_FunctionalDependencies,    turnOn, Opt_MultiParamTypeClasses)
++    , (Opt_DysfunctionalDependencies, turnOn, Opt_MultiParamTypeClasses)
+ 
+     , (Opt_RebindableSyntax, turnOff, Opt_ImplicitPrelude)      -- NB: turn off!
+ 
+diff --git a/compiler/typecheck/TcValidity.lhs b/compiler/typecheck/TcValidity.lhs
+--- a/compiler/typecheck/TcValidity.lhs
++++ b/compiler/typecheck/TcValidity.lhs
+@@ -874,12 +874,15 @@
+         --   e.g.  Bar a => Bar Int is ambiguous, but it also fails
+         --   the termination condition, because 'a' appears more often
+         --   in the constraint than in the head
++        ; dysfundep_ok   <- xoptM Opt_DysfunctionalDependencies
+         ; undecidable_ok <- xoptM Opt_UndecidableInstances
+-        ; if undecidable_ok 
++
++        ; if undecidable_ok
+           then checkAmbiguity ctxt ty
+           else checkInstTermination inst_tys theta
+ 
+-        ; case (checkInstCoverage undecidable_ok clas theta inst_tys) of
++        ; unless dysfundep_ok
++        $ case (checkInstCoverage undecidable_ok clas theta inst_tys) of
+             Nothing  -> return ()   -- Check succeeded
+             Just msg -> addErrTc (instTypeErr clas inst_tys msg)
+                   
+diff --git a/docs/users_guide/glasgow_exts.xml b/docs/users_guide/glasgow_exts.xml
+--- a/docs/users_guide/glasgow_exts.xml
++++ b/docs/users_guide/glasgow_exts.xml
+@@ -55,12 +55,12 @@
+ 
+     <para>The flag <option>-fglasgow-exts</option>
+           <indexterm><primary><option>-fglasgow-exts</option></primary></indexterm>
+-	  is equivalent to enabling the following extensions:
++      is equivalent to enabling the following extensions:
+           &what_glasgow_exts_does;
+-	    Enabling these options is the <emphasis>only</emphasis>
+-	    effect of <option>-fglasgow-exts</option>.
++        Enabling these options is the <emphasis>only</emphasis>
++        effect of <option>-fglasgow-exts</option>.
+           We are trying to move away from this portmanteau flag,
+-	  and towards enabling features individually.</para>
++      and towards enabling features individually.</para>
+ 
+   </sect1>
+ 
+@@ -301,15 +301,15 @@
+       character sequences.  The following alternatives are provided:</para>
+ 
+       <informaltable>
+-	<tgroup cols="2" align="left" colsep="1" rowsep="1">
+-	  <thead>
+-	    <row>
+-	      <entry>ASCII</entry>
++    <tgroup cols="2" align="left" colsep="1" rowsep="1">
++      <thead>
++        <row>
++          <entry>ASCII</entry>
+               <entry>Unicode alternative</entry>
+-	      <entry>Code point</entry>
+-	      <entry>Name</entry>
+-	    </row>
+-	  </thead>
++          <entry>Code point</entry>
++          <entry>Name</entry>
++        </row>
++      </thead>
+ 
+ <!--
+                to find the DocBook entities for these characters, find
+@@ -319,90 +319,90 @@
+                equivalent DocBook entities.
+             -->
+ 
+-	  <tbody>
+-	    <row>
+-	      <entry><literal>::</literal></entry>
+-	      <entry>::</entry> <!-- no special char, apparently -->
++      <tbody>
++        <row>
++          <entry><literal>::</literal></entry>
++          <entry>::</entry> <!-- no special char, apparently -->
+               <entry>0x2237</entry>
+-	      <entry>PROPORTION</entry>
+-	    </row>
++          <entry>PROPORTION</entry>
++        </row>
+           </tbody>
+-	  <tbody>
+-	    <row>
+-	      <entry><literal>=&gt;</literal></entry>
+-	      <entry>&rArr;</entry>
+-	      <entry>0x21D2</entry>
++      <tbody>
++        <row>
++          <entry><literal>=&gt;</literal></entry>
++          <entry>&rArr;</entry>
++          <entry>0x21D2</entry>
+               <entry>RIGHTWARDS DOUBLE ARROW</entry>
+-	    </row>
++        </row>
+           </tbody>
+-	  <tbody>
+-	    <row>
+-	      <entry><literal>forall</literal></entry>
+-	      <entry>&forall;</entry>
+-	      <entry>0x2200</entry>
++      <tbody>
++        <row>
++          <entry><literal>forall</literal></entry>
++          <entry>&forall;</entry>
++          <entry>0x2200</entry>
+               <entry>FOR ALL</entry>
+-	    </row>
++        </row>
+           </tbody>
+-	  <tbody>
+-	    <row>
+-	      <entry><literal>-&gt;</literal></entry>
+-	      <entry>&rarr;</entry>
+-	      <entry>0x2192</entry>
++      <tbody>
++        <row>
++          <entry><literal>-&gt;</literal></entry>
++          <entry>&rarr;</entry>
++          <entry>0x2192</entry>
+               <entry>RIGHTWARDS ARROW</entry>
+-	    </row>
++        </row>
+           </tbody>
+-	  <tbody>
+-	    <row>
+-	      <entry><literal>&lt;-</literal></entry>
+-	      <entry>&larr;</entry>
+-	      <entry>0x2190</entry>
++      <tbody>
++        <row>
++          <entry><literal>&lt;-</literal></entry>
++          <entry>&larr;</entry>
++          <entry>0x2190</entry>
+               <entry>LEFTWARDS ARROW</entry>
+-	    </row>
++        </row>
+           </tbody>
+ 
+-	  <tbody>
+-	    <row>
+-	      <entry>-&lt;</entry>
+-	      <entry>&larrtl;</entry>
+-	      <entry>0x2919</entry>
+-	      <entry>LEFTWARDS ARROW-TAIL</entry>
+-	    </row>
++      <tbody>
++        <row>
++          <entry>-&lt;</entry>
++          <entry>&larrtl;</entry>
++          <entry>0x2919</entry>
++          <entry>LEFTWARDS ARROW-TAIL</entry>
++        </row>
+           </tbody>
+ 
+-	  <tbody>
+-	    <row>
+-	      <entry>&gt;-</entry>
+-	      <entry>&rarrtl;</entry>
+-	      <entry>0x291A</entry>
+-	      <entry>RIGHTWARDS ARROW-TAIL</entry>
+-	    </row>
++      <tbody>
++        <row>
++          <entry>&gt;-</entry>
++          <entry>&rarrtl;</entry>
++          <entry>0x291A</entry>
++          <entry>RIGHTWARDS ARROW-TAIL</entry>
++        </row>
+           </tbody>
+ 
+-	  <tbody>
+-	    <row>
+-	      <entry>-&lt;&lt;</entry>
+-	      <entry></entry>
+-	      <entry>0x291B</entry>
+-	      <entry>LEFTWARDS DOUBLE ARROW-TAIL</entry>
+-	    </row>
++      <tbody>
++        <row>
++          <entry>-&lt;&lt;</entry>
++          <entry></entry>
++          <entry>0x291B</entry>
++          <entry>LEFTWARDS DOUBLE ARROW-TAIL</entry>
++        </row>
+           </tbody>
+ 
+-	  <tbody>
+-	    <row>
+-	      <entry>&gt;&gt;-</entry>
+-	      <entry></entry>
+-	      <entry>0x291C</entry>
+-	      <entry>RIGHTWARDS DOUBLE ARROW-TAIL</entry>
+-	    </row>
++      <tbody>
++        <row>
++          <entry>&gt;&gt;-</entry>
++          <entry></entry>
++          <entry>0x291C</entry>
++          <entry>RIGHTWARDS DOUBLE ARROW-TAIL</entry>
++        </row>
+           </tbody>
+ 
+-	  <tbody>
+-	    <row>
+-	      <entry>*</entry>
+-	      <entry>&starf;</entry>
+-	      <entry>0x2605</entry>
+-	      <entry>BLACK STAR</entry>
+-	    </row>
++      <tbody>
++        <row>
++          <entry>*</entry>
++          <entry>&starf;</entry>
++          <entry>0x2605</entry>
++          <entry>BLACK STAR</entry>
++        </row>
+           </tbody>
+ 
+         </tgroup>
+@@ -412,35 +412,35 @@
+     <sect2 id="magic-hash">
+       <title>The magic hash</title>
+       <para>The language extension <option>-XMagicHash</option> allows "&num;" as a
+-	postfix modifier to identifiers.  Thus, "x&num;" is a valid variable, and "T&num;" is
+-	a valid type constructor or data constructor.</para>
++    postfix modifier to identifiers.  Thus, "x&num;" is a valid variable, and "T&num;" is
++    a valid type constructor or data constructor.</para>
+ 
+       <para>The hash sign does not change semantics at all.  We tend to use variable
+-	names ending in "&num;" for unboxed values or types (e.g. <literal>Int&num;</literal>),
++    names ending in "&num;" for unboxed values or types (e.g. <literal>Int&num;</literal>),
+         but there is no requirement to do so; they are just plain ordinary variables.
+-	Nor does the <option>-XMagicHash</option> extension bring anything into scope.
+-	For example, to bring <literal>Int&num;</literal> into scope you must
+-	import <literal>GHC.Prim</literal> (see <xref linkend="primitives"/>);
+-	the <option>-XMagicHash</option> extension
+-	then allows you to <emphasis>refer</emphasis> to the <literal>Int&num;</literal>
+-	that is now in scope. Note that with this option, the meaning of <literal>x&num;y = 0</literal>
+-	is changed: it defines a function <literal>x&num;</literal> taking a single argument <literal>y</literal>;
++    Nor does the <option>-XMagicHash</option> extension bring anything into scope.
++    For example, to bring <literal>Int&num;</literal> into scope you must
++    import <literal>GHC.Prim</literal> (see <xref linkend="primitives"/>);
++    the <option>-XMagicHash</option> extension
++    then allows you to <emphasis>refer</emphasis> to the <literal>Int&num;</literal>
++    that is now in scope. Note that with this option, the meaning of <literal>x&num;y = 0</literal>
++    is changed: it defines a function <literal>x&num;</literal> taking a single argument <literal>y</literal>;
+         to define the operator <literal>&num;</literal>, put a space: <literal>x &num; y = 0</literal>.
+ 
+ </para>
+       <para> The <option>-XMagicHash</option> also enables some new forms of literals (see <xref linkend="glasgow-unboxed"/>):
+-	<itemizedlist>
+-	  <listitem><para> <literal>'x'&num;</literal> has type <literal>Char&num;</literal></para> </listitem>
+-	  <listitem><para> <literal>&quot;foo&quot;&num;</literal> has type <literal>Addr&num;</literal></para> </listitem>
+-	  <listitem><para> <literal>3&num;</literal> has type <literal>Int&num;</literal>. In general,
+-	  any Haskell integer lexeme followed by a <literal>&num;</literal> is an <literal>Int&num;</literal> literal, e.g.
++    <itemizedlist>
++      <listitem><para> <literal>'x'&num;</literal> has type <literal>Char&num;</literal></para> </listitem>
++      <listitem><para> <literal>&quot;foo&quot;&num;</literal> has type <literal>Addr&num;</literal></para> </listitem>
++      <listitem><para> <literal>3&num;</literal> has type <literal>Int&num;</literal>. In general,
++      any Haskell integer lexeme followed by a <literal>&num;</literal> is an <literal>Int&num;</literal> literal, e.g.
+             <literal>-0x3A&num;</literal> as well as <literal>32&num;</literal>.</para></listitem>
+-	  <listitem><para> <literal>3&num;&num;</literal> has type <literal>Word&num;</literal>. In general,
+-	  any non-negative Haskell integer lexeme followed by <literal>&num;&num;</literal>
+-	      is a <literal>Word&num;</literal>. </para> </listitem>
+-	  <listitem><para> <literal>3.2&num;</literal> has type <literal>Float&num;</literal>.</para> </listitem>
+-	  <listitem><para> <literal>3.2&num;&num;</literal> has type <literal>Double&num;</literal></para> </listitem>
+-	  </itemizedlist>
++      <listitem><para> <literal>3&num;&num;</literal> has type <literal>Word&num;</literal>. In general,
++      any non-negative Haskell integer lexeme followed by <literal>&num;&num;</literal>
++          is a <literal>Word&num;</literal>. </para> </listitem>
++      <listitem><para> <literal>3.2&num;</literal> has type <literal>Float&num;</literal>.</para> </listitem>
++      <listitem><para> <literal>3.2&num;&num;</literal> has type <literal>Double&num;</literal></para> </listitem>
++      </itemizedlist>
+       </para>
+    </sect2>
+ 
+@@ -1097,7 +1097,7 @@
+ module ShouldCompile where
+ 
+ data T a where
+-	MkT :: (Show b) => a -> b -> T a
++    MkT :: (Show b) => a -> b -> T a
+ 
+ pattern ExNumPat x = MkT 42 x
+ </programlisting>
+@@ -1516,8 +1516,8 @@
+     <para>Generalised list comprehensions are a further enhancement to the
+     list comprehension syntactic sugar to allow operations such as sorting
+     and grouping which are familiar from SQL.   They are fully described in the
+-	paper <ulink url="http://research.microsoft.com/~simonpj/papers/list-comp">
+-	  Comprehensive comprehensions: comprehensions with "order by" and "group by"</ulink>,
++    paper <ulink url="http://research.microsoft.com/~simonpj/papers/list-comp">
++      Comprehensive comprehensions: comprehensions with "order by" and "group by"</ulink>,
+     except that the syntax we use differs slightly from the paper.</para>
+ <para>The extension is enabled with the flag <option>-XTransformListComp</option>.</para>
+ <para>Here is an example:
+@@ -1808,7 +1808,7 @@
+ 
+ D[ e | Q then group using f, R ]      = f D[ Qv | Q ] &gt;&gt;= \ys -&gt;
+                                         case (fmap selQv1 ys, ..., fmap selQvn ys) of
+-                                 	     Qv -&gt; D[ e | R ]
++                                         Qv -&gt; D[ e | R ]
+ 
+ D[ e | Q then group by b using f, R ] = f (\Qv -&gt; b) D[ Qv | Q ] &gt;&gt;= \ys -&gt;
+                                         case (fmap selQv1 ys, ..., fmap selQvn ys) of
+@@ -1866,68 +1866,68 @@
+  Prelude module.)</para>
+ 
+             <para>Suppose you are importing a Prelude of your own
+-	      in order to define your own numeric class
++          in order to define your own numeric class
+             hierarchy.  It completely defeats that purpose if the
+             literal "1" means "<literal>Prelude.fromInteger
+             1</literal>", which is what the Haskell Report specifies.
+             So the <option>-XRebindableSyntax</option>
+-	      flag causes
++          flag causes
+             the following pieces of built-in syntax to refer to
+             <emphasis>whatever is in scope</emphasis>, not the Prelude
+             versions:
+-	    <itemizedlist>
+-	      <listitem>
+-		<para>An integer literal <literal>368</literal> means
++        <itemizedlist>
++          <listitem>
++        <para>An integer literal <literal>368</literal> means
+                 "<literal>fromInteger (368::Integer)</literal>", rather than
+                 "<literal>Prelude.fromInteger (368::Integer)</literal>".
+ </para> </listitem>
+ 
+       <listitem><para>Fractional literals are handed in just the same way,
+-	  except that the translation is
+-	      <literal>fromRational (3.68::Rational)</literal>.
++      except that the translation is
++          <literal>fromRational (3.68::Rational)</literal>.
+ </para> </listitem>
+ 
+-	  <listitem><para>The equality test in an overloaded numeric pattern
+-	      uses whatever <literal>(==)</literal> is in scope.
++      <listitem><para>The equality test in an overloaded numeric pattern
++          uses whatever <literal>(==)</literal> is in scope.
+ </para> </listitem>
+ 
+-	  <listitem><para>The subtraction operation, and the
+-	  greater-than-or-equal test, in <literal>n+k</literal> patterns
+-	      use whatever <literal>(-)</literal> and <literal>(>=)</literal> are in scope.
+-	      </para></listitem>
+-
+-	      <listitem>
+-		<para>Negation (e.g. "<literal>- (f x)</literal>")
+-		means "<literal>negate (f x)</literal>", both in numeric
+-		patterns, and expressions.
+-	      </para></listitem>
+-
+-	      <listitem>
+-		<para>Conditionals (e.g. "<literal>if</literal> e1 <literal>then</literal> e2 <literal>else</literal> e3")
+-		means "<literal>ifThenElse</literal> e1 e2 e3".  However <literal>case</literal> expressions are unaffected.
+-	      </para></listitem>
+-
+-	      <listitem>
+-	  <para>"Do" notation is translated using whatever
+-	      functions <literal>(>>=)</literal>,
+-	      <literal>(>>)</literal>, and <literal>fail</literal>,
+-	      are in scope (not the Prelude
+-	      versions).  List comprehensions, <literal>mdo</literal>
+-	      (<xref linkend="recursive-do-notation"/>), and parallel array
+-	      comprehensions, are unaffected.  </para></listitem>
+-
+-	      <listitem>
+-		<para>Arrow
+-		notation (see <xref linkend="arrow-notation"/>)
+-		uses whatever <literal>arr</literal>,
+-		<literal>(>>>)</literal>, <literal>first</literal>,
+-		<literal>app</literal>, <literal>(|||)</literal> and
+-		<literal>loop</literal> functions are in scope. But unlike the
+-		other constructs, the types of these functions must match the
+-		Prelude types very closely.  Details are in flux; if you want
+-		to use this, ask!
+-	      </para></listitem>
+-	    </itemizedlist>
++      <listitem><para>The subtraction operation, and the
++      greater-than-or-equal test, in <literal>n+k</literal> patterns
++          use whatever <literal>(-)</literal> and <literal>(>=)</literal> are in scope.
++          </para></listitem>
++
++          <listitem>
++        <para>Negation (e.g. "<literal>- (f x)</literal>")
++        means "<literal>negate (f x)</literal>", both in numeric
++        patterns, and expressions.
++          </para></listitem>
++
++          <listitem>
++        <para>Conditionals (e.g. "<literal>if</literal> e1 <literal>then</literal> e2 <literal>else</literal> e3")
++        means "<literal>ifThenElse</literal> e1 e2 e3".  However <literal>case</literal> expressions are unaffected.
++          </para></listitem>
++
++          <listitem>
++      <para>"Do" notation is translated using whatever
++          functions <literal>(>>=)</literal>,
++          <literal>(>>)</literal>, and <literal>fail</literal>,
++          are in scope (not the Prelude
++          versions).  List comprehensions, <literal>mdo</literal>
++          (<xref linkend="recursive-do-notation"/>), and parallel array
++          comprehensions, are unaffected.  </para></listitem>
++
++          <listitem>
++        <para>Arrow
++        notation (see <xref linkend="arrow-notation"/>)
++        uses whatever <literal>arr</literal>,
++        <literal>(>>>)</literal>, <literal>first</literal>,
++        <literal>app</literal>, <literal>(|||)</literal> and
++        <literal>loop</literal> functions are in scope. But unlike the
++        other constructs, the types of these functions must match the
++        Prelude types very closely.  Details are in flux; if you want
++        to use this, ask!
++          </para></listitem>
++        </itemizedlist>
+ <option>-XRebindableSyntax</option> implies <option>-XNoImplicitPrelude</option>.
+ </para>
+ <para>
+@@ -1944,10 +1944,10 @@
+ </programlisting>
+ </para>
+ 
+-	     <para>Be warned: this is an experimental facility, with
+-	     fewer checks than usual.  Use <literal>-dcore-lint</literal>
+-	     to typecheck the desugared program.  If Core Lint is happy
+-	     you should be all right.</para>
++         <para>Be warned: this is an experimental facility, with
++         fewer checks than usual.  Use <literal>-dcore-lint</literal>
++         to typecheck the desugared program.  If Core Lint is happy
++         you should be all right.</para>
+ 
+ </sect2>
+ 
+@@ -2556,145 +2556,145 @@
+ 
+     <itemizedlist>
+       <listitem>
+-	<para>New reserved words and symbols: character sequences
++    <para>New reserved words and symbols: character sequences
+         which are no longer available for use as identifiers in the
+         program.</para>
+       </listitem>
+       <listitem>
+-	<para>Other special syntax: sequences of characters that have
+-	a different meaning when this particular option is turned
+-	on.</para>
++    <para>Other special syntax: sequences of characters that have
++    a different meaning when this particular option is turned
++    on.</para>
+       </listitem>
+     </itemizedlist>
+ 
+ The following syntax is stolen:
+ 
+     <variablelist>
+       <varlistentry>
+-	<term>
++    <term>
+           <literal>forall</literal>
+           <indexterm><primary><literal>forall</literal></primary></indexterm>
+-	</term>
+-	<listitem><para>
+-	Stolen (in types) by: <option>-XExplicitForAll</option>, and hence by
++    </term>
++    <listitem><para>
++    Stolen (in types) by: <option>-XExplicitForAll</option>, and hence by
+             <option>-XScopedTypeVariables</option>,
+-	    <option>-XLiberalTypeSynonyms</option>,
+-	    <option>-XRankNTypes</option>,
+-	    <option>-XExistentialQuantification</option>
+-	  </para></listitem>
++        <option>-XLiberalTypeSynonyms</option>,
++        <option>-XRankNTypes</option>,
++        <option>-XExistentialQuantification</option>
++      </para></listitem>
+       </varlistentry>
+ 
+       <varlistentry>
+-	<term>
++    <term>
+           <literal>mdo</literal>
+           <indexterm><primary><literal>mdo</literal></primary></indexterm>
+-	</term>
+-	<listitem><para>
+-	Stolen by: <option>-XRecursiveDo</option>
+-	  </para></listitem>
++    </term>
++    <listitem><para>
++    Stolen by: <option>-XRecursiveDo</option>
++      </para></listitem>
+       </varlistentry>
+ 
+       <varlistentry>
+-	<term>
++    <term>
+           <literal>foreign</literal>
+           <indexterm><primary><literal>foreign</literal></primary></indexterm>
+-	</term>
+-	<listitem><para>
+-	Stolen by: <option>-XForeignFunctionInterface</option>
+-	  </para></listitem>
++    </term>
++    <listitem><para>
++    Stolen by: <option>-XForeignFunctionInterface</option>
++      </para></listitem>
+       </varlistentry>
+ 
+       <varlistentry>
+-	<term>
++    <term>
+           <literal>rec</literal>,
+-	  <literal>proc</literal>, <literal>-&lt;</literal>,
+-	  <literal>&gt;-</literal>, <literal>-&lt;&lt;</literal>,
+-	  <literal>&gt;&gt;-</literal>, and <literal>(|</literal>,
+-	  <literal>|)</literal> brackets
++      <literal>proc</literal>, <literal>-&lt;</literal>,
++      <literal>&gt;-</literal>, <literal>-&lt;&lt;</literal>,
++      <literal>&gt;&gt;-</literal>, and <literal>(|</literal>,
++      <literal>|)</literal> brackets
+           <indexterm><primary><literal>proc</literal></primary></indexterm>
+-	</term>
+-	<listitem><para>
+-	Stolen by: <option>-XArrows</option>
+-	  </para></listitem>
++    </term>
++    <listitem><para>
++    Stolen by: <option>-XArrows</option>
++      </para></listitem>
+       </varlistentry>
+ 
+       <varlistentry>
+-	<term>
+-	  <literal>?<replaceable>varid</replaceable></literal>
++    <term>
++      <literal>?<replaceable>varid</replaceable></literal>
+           <indexterm><primary>implicit parameters</primary></indexterm>
+-	</term>
+-	<listitem><para>
+-	Stolen by: <option>-XImplicitParams</option>
+-	  </para></listitem>
++    </term>
++    <listitem><para>
++    Stolen by: <option>-XImplicitParams</option>
++      </para></listitem>
+       </varlistentry>
+ 
+       <varlistentry>
+-	<term>
+-	  <literal>[|</literal>,
+-	  <literal>[e|</literal>, <literal>[p|</literal>,
+-	  <literal>[d|</literal>, <literal>[t|</literal>,
+-	  <literal>$(</literal>,
+-	  <literal>$$(</literal>,
+-	  <literal>[||</literal>,
+-	  <literal>[e||</literal>,
+-	  <literal>$<replaceable>varid</replaceable></literal>,
+-	  <literal>$$<replaceable>varid</replaceable></literal>
++    <term>
++      <literal>[|</literal>,
++      <literal>[e|</literal>, <literal>[p|</literal>,
++      <literal>[d|</literal>, <literal>[t|</literal>,
++      <literal>$(</literal>,
++      <literal>$$(</literal>,
++      <literal>[||</literal>,
++      <literal>[e||</literal>,
++      <literal>$<replaceable>varid</replaceable></literal>,
++      <literal>$$<replaceable>varid</replaceable></literal>
+           <indexterm><primary>Template Haskell</primary></indexterm>
+-	</term>
+-	<listitem><para>
+-	Stolen by: <option>-XTemplateHaskell</option>
+-	  </para></listitem>
++    </term>
++    <listitem><para>
++    Stolen by: <option>-XTemplateHaskell</option>
++      </para></listitem>
+       </varlistentry>
+ 
+       <varlistentry>
+-	<term>
+-	  <literal>[<replaceable>varid</replaceable>|</literal>
++    <term>
++      <literal>[<replaceable>varid</replaceable>|</literal>
+           <indexterm><primary>quasi-quotation</primary></indexterm>
+-	</term>
+-	<listitem><para>
+-	Stolen by: <option>-XQuasiQuotes</option>
+-	  </para></listitem>
++    </term>
++    <listitem><para>
++    Stolen by: <option>-XQuasiQuotes</option>
++      </para></listitem>
+       </varlistentry>
+ 
+       <varlistentry>
+-	<term>
+-	      <replaceable>varid</replaceable>{<literal>&num;</literal>},
+-	      <replaceable>char</replaceable><literal>&num;</literal>,
+-	      <replaceable>string</replaceable><literal>&num;</literal>,
+-	      <replaceable>integer</replaceable><literal>&num;</literal>,
+-	      <replaceable>float</replaceable><literal>&num;</literal>,
+-	      <replaceable>float</replaceable><literal>&num;&num;</literal>
+-	</term>
+-	<listitem><para>
+-	Stolen by: <option>-XMagicHash</option>
+-	  </para></listitem>
++    <term>
++          <replaceable>varid</replaceable>{<literal>&num;</literal>},
++          <replaceable>char</replaceable><literal>&num;</literal>,
++          <replaceable>string</replaceable><literal>&num;</literal>,
++          <replaceable>integer</replaceable><literal>&num;</literal>,
++          <replaceable>float</replaceable><literal>&num;</literal>,
++          <replaceable>float</replaceable><literal>&num;&num;</literal>
++    </term>
++    <listitem><para>
++    Stolen by: <option>-XMagicHash</option>
++      </para></listitem>
+       </varlistentry>
+ 
+       <varlistentry>
+-	<term>
+-	      <literal>(&num;</literal>, <literal>&num;)</literal>
+-	</term>
+-	<listitem><para>
+-	Stolen by: <option>-XUnboxedTuples</option>
+-	  </para></listitem>
++    <term>
++          <literal>(&num;</literal>, <literal>&num;)</literal>
++    </term>
++    <listitem><para>
++    Stolen by: <option>-XUnboxedTuples</option>
++      </para></listitem>
+       </varlistentry>
+ 
+       <varlistentry>
+-	<term>
+-	      <replaceable>varid</replaceable><literal>!</literal><replaceable>varid</replaceable>
+-	</term>
+-	<listitem><para>
+-	Stolen by: <option>-XBangPatterns</option>
+-	  </para></listitem>
++    <term>
++          <replaceable>varid</replaceable><literal>!</literal><replaceable>varid</replaceable>
++    </term>
++    <listitem><para>
++    Stolen by: <option>-XBangPatterns</option>
++      </para></listitem>
+       </varlistentry>
+ 
+       <varlistentry>
+-	<term>
+-	  <literal>pattern</literal>
+-	</term>
+-	<listitem><para>
+-	Stolen by: <option>-XPatternSynonyms</option>
+-	  </para></listitem>
++    <term>
++      <literal>pattern</literal>
++    </term>
++    <listitem><para>
++    Stolen by: <option>-XPatternSynonyms</option>
++      </para></listitem>
+       </varlistentry>
+     </variablelist>
+ </para>
+@@ -3437,9 +3437,9 @@
+ the following two declarations are equivalent:
+ <programlisting>
+    data T1 a
+-	= forall b. (Num a, Eq b) => MkT1 a b
++    = forall b. (Num a, Eq b) => MkT1 a b
+    data T2 a where
+-	MkT2 :: (Num a, Eq b) => a -> b -> T2 a
++    MkT2 :: (Num a, Eq b) => a -> b -> T2 a
+ </programlisting>
+ </para>
+ <para>All this behaviour contrasts with Haskell 98's peculiar treatment of
+@@ -3653,7 +3653,7 @@
+ for these <literal>Terms</literal>:
+ <programlisting>
+   eval :: Term a -> a
+-  eval (Lit i) 	    = i
++  eval (Lit i)      = i
+   eval (Succ t)     = 1 + eval t
+   eval (IsZero t)   = eval t == 0
+   eval (If b e1 e2) = if eval b then eval e1 else eval e2
+@@ -4172,10 +4172,10 @@
+ </para></listitem>
+ <listitem><para>
+   <literal>C</literal> is not <literal>Read</literal>, <literal>Show</literal>,
+-		<literal>Typeable</literal>, or <literal>Data</literal>.  These classes
+-		should not "look through" the type or its constructor.  You can still
+-		derive these classes for a newtype, but it happens in the usual way, not
+-		via this new mechanism.
++        <literal>Typeable</literal>, or <literal>Data</literal>.  These classes
++        should not "look through" the type or its constructor.  You can still
++        derive these classes for a newtype, but it happens in the usual way, not
++        via this new mechanism.
+ </para></listitem>
+ <listitem><para>
+   It is safe to coerce each of the methods of <literal>C</literal>. That is,
+@@ -4930,6 +4930,21 @@
+     op = ... -- Default
+ </programlisting>
+ </para>
++
++<para>
++    Please note, that starting with GHC 7.8, using <option>-XUndecidableInstances</option> does not lift the Liberal Coverage Condition, which assumes, that left hand side of given instance should determine the right hand side. It can be further lifted by using <option>-XDysfunctionalDependencies</option> flag, allowing the following program to type check and compile:
++    <programlisting>
++data X = X
++
++class CTest a b | a -> b where
++    ctest :: a -> b
++
++instance Monad m => CTest X (m Int) where
++    ctest _ = return 5
++
++main = print (ctest X :: [Int])
++    </programlisting>
++</para>
+ </sect3>
+ 
+ <sect3 id="undecidable-instances">
+@@ -4976,7 +4991,7 @@
+ Similarly, it can be tempting to lift the coverage condition:
+ <programlisting>
+   class Mul a b c | a b -> c where
+-  	(.*.) :: a -> b -> c
++    (.*.) :: a -> b -> c
+ 
+   instance Mul Int Int Int where (.*.) = (*)
+   instance Mul Int Float Float where x .*. y = fromIntegral x * y
+@@ -5703,10 +5718,10 @@
+     <sect3 id="data-family-overlap">
+       <title>Overlap of data instances</title>
+       <para>
+-	The instance declarations of a data family used in a single program
+-	may not overlap at all, independent of whether they are associated or
+-	not.  In contrast to type class instances, this is not only a matter
+-	of consistency, but one of type safety.
++    The instance declarations of a data family used in a single program
++    may not overlap at all, independent of whether they are associated or
++    not.  In contrast to type class instances, this is not only a matter
++    of consistency, but one of type safety.
+       </para>
+   </sect3>
+ </sect2>
+@@ -5857,60 +5872,60 @@
+       <title>Compatibility and apartness of type family equations</title>
+       <para>
+         There must be some restrictions on the equations of type families, lest
+-	we define an ambiguous rewrite system. So, equations of open type families
+-	are restricted to be <firstterm>compatible</firstterm>. Two type patterns
+-	are compatible if
++    we define an ambiguous rewrite system. So, equations of open type families
++    are restricted to be <firstterm>compatible</firstterm>. Two type patterns
++    are compatible if
+ <orderedlist>
+ <listitem><para>all corresponding types in the patterns are <firstterm>apart</firstterm>, or</para></listitem>
+ <listitem><para>the two patterns unify producing a substitution, and the right-hand sides are equal under that substitution.</para></listitem>
+ </orderedlist>
+         Two types are considered <firstterm>apart</firstterm> if, for all possible
+-	substitutions, the types cannot reduce to a common reduct.
++    substitutions, the types cannot reduce to a common reduct.
+       </para>
+ 
+       <para>
+-	The first clause of "compatible" is the more straightforward one. It says
+-	that the patterns of two distinct type family instances cannot overlap.
+-	For example, the following is disallowed:
++    The first clause of "compatible" is the more straightforward one. It says
++    that the patterns of two distinct type family instances cannot overlap.
++    For example, the following is disallowed:
+ <programlisting>
+ type instance F Int = Bool
+ type instance F Int = Char
+ </programlisting>
+         The second clause is a little more interesting. It says that two
+         overlapping type family instances are allowed if the right-hand
+-	sides coincide in the region of overlap. Some examples help here:
++    sides coincide in the region of overlap. Some examples help here:
+ <programlisting>
+ type instance F (a, Int) = [a]
+ type instance F (Int, b) = [b]   -- overlap permitted
+ 
+ type instance G (a, Int)  = [a]
+ type instance G (Char, a) = [a]  -- ILLEGAL overlap, as [Char] /= [Int]
+ </programlisting>
+-	Note that this compatibility condition is independent of whether the type family
+-	is associated or not, and it is not only a matter of consistency, but
+-	one of type safety. </para>
++    Note that this compatibility condition is independent of whether the type family
++    is associated or not, and it is not only a matter of consistency, but
++    one of type safety. </para>
+ 
+-	<para>
+-	  The definition for "compatible" uses a notion of "apart", whose definition
+-	  in turn relies on type family reduction. This condition of "apartness", as
+-	  stated, is impossible to check, so we use this conservative approximation:
+-	  two types are considered to be apart when the two types cannot be unified,
+-	  even by a potentially infinite unifier. Allowing the unifier to be infinite
+-	  disallows the following pair of instances:
++    <para>
++      The definition for "compatible" uses a notion of "apart", whose definition
++      in turn relies on type family reduction. This condition of "apartness", as
++      stated, is impossible to check, so we use this conservative approximation:
++      two types are considered to be apart when the two types cannot be unified,
++      even by a potentially infinite unifier. Allowing the unifier to be infinite
++      disallows the following pair of instances:
+ <programlisting>
+ type instance H x   x = Int
+ type instance H [x] x = Bool
+ </programlisting>
+           The type patterns in this pair equal if <literal>x</literal> is replaced
+-	  by an infinite nesting of lists. Rejecting instances such as these is
+-	  necessary for type soundness.
+-	</para>
++      by an infinite nesting of lists. Rejecting instances such as these is
++      necessary for type soundness.
++    </para>
+ 
+-	<para>
+-	  Compatibility also affects closed type families. When simplifying an
+-	  application of a closed type family, GHC will select an equation only
+-	  when it is sure that no incompatible previous equation will ever apply.
+-	  Here are some examples:
++    <para>
++      Compatibility also affects closed type families. When simplifying an
++      application of a closed type family, GHC will select an equation only
++      when it is sure that no incompatible previous equation will ever apply.
++      Here are some examples:
+ <programlisting>
+ type family F a where
+   F Int = Bool
+@@ -5937,47 +5952,47 @@
+     <sect3 id="type-family-decidability">
+       <title>Decidability of type synonym instances</title>
+       <para>
+-	In order to guarantee that type inference in the presence of type
+-	families decidable, we need to place a number of additional
+-	restrictions on the formation of type instance declarations (c.f.,
+-	Definition 5 (Relaxed Conditions) of &ldquo;<ulink
++    In order to guarantee that type inference in the presence of type
++    families decidable, we need to place a number of additional
++    restrictions on the formation of type instance declarations (c.f.,
++    Definition 5 (Relaxed Conditions) of &ldquo;<ulink
+         url="http://www.cse.unsw.edu.au/~chak/papers/SPCS08.html">Type
+-	  Checking with Open Type Functions</ulink>&rdquo;).  Instance
+-	  declarations have the general form
++      Checking with Open Type Functions</ulink>&rdquo;).  Instance
++      declarations have the general form
+ <programlisting>
+ type instance F t1 .. tn = t
+ </programlisting>
+         where we require that for every type family application <literal>(G s1
+         .. sm)</literal> in <literal>t</literal>,
+-	<orderedlist>
+-	  <listitem>
+-	    <para><literal>s1 .. sm</literal> do not contain any type family
+-	    constructors,</para>
+-	  </listitem>
+-	  <listitem>
+-	    <para>the total number of symbols (data type constructors and type
+-	    variables) in <literal>s1 .. sm</literal> is strictly smaller than
+-	    in <literal>t1 .. tn</literal>, and</para>
+-	  </listitem>
+-	  <listitem>
+-	    <para>for every type
+-	    variable <literal>a</literal>, <literal>a</literal> occurs
+-	    in <literal>s1 .. sm</literal> at most as often as in <literal>t1
+-	    .. tn</literal>.</para>
+-	  </listitem>
+-	</orderedlist>
+-	These restrictions are easily verified and ensure termination of type
+-	inference.  However, they are not sufficient to guarantee completeness
+-	of type inference in the presence of, so called, ''loopy equalities'',
+-	such as <literal>a ~ [F a]</literal>, where a recursive occurrence of
+-	a type variable is underneath a family application and data
+-	constructor application - see the above mentioned paper for details.
++    <orderedlist>
++      <listitem>
++        <para><literal>s1 .. sm</literal> do not contain any type family
++        constructors,</para>
++      </listitem>
++      <listitem>
++        <para>the total number of symbols (data type constructors and type
++        variables) in <literal>s1 .. sm</literal> is strictly smaller than
++        in <literal>t1 .. tn</literal>, and</para>
++      </listitem>
++      <listitem>
++        <para>for every type
++        variable <literal>a</literal>, <literal>a</literal> occurs
++        in <literal>s1 .. sm</literal> at most as often as in <literal>t1
++        .. tn</literal>.</para>
++      </listitem>
++    </orderedlist>
++    These restrictions are easily verified and ensure termination of type
++    inference.  However, they are not sufficient to guarantee completeness
++    of type inference in the presence of, so called, ''loopy equalities'',
++    such as <literal>a ~ [F a]</literal>, where a recursive occurrence of
++    a type variable is underneath a family application and data
++    constructor application - see the above mentioned paper for details.
+       </para>
+       <para>
+-	If the option <option>-XUndecidableInstances</option> is passed to the
+-	compiler, the above restrictions are not enforced and it is on the
+-	programmer to ensure termination of the normalisation of type families
+-	during type inference.
++    If the option <option>-XUndecidableInstances</option> is passed to the
++    compiler, the above restrictions are not enforced and it is on the
++    programmer to ensure termination of the normalisation of type families
++    during type inference.
+       </para>
+   </sect3>
+   </sect2>
+@@ -5999,12 +6014,12 @@
+ When doing so, we (optionally) may drop the "<literal>family</literal>" keyword.
+ </para>
+ <para>
+-	The type parameters must all be type variables, of course,
++    The type parameters must all be type variables, of course,
+         and some (but not necessarily all) of then can be the class
+         parameters. Each class parameter may
+-	only be used at most once per associated type, but some may be omitted
+-	and they may be in an order other than in the class head.  Hence, the
+-	following contrived example is admissible:
++    only be used at most once per associated type, but some may be omitted
++    and they may be in an order other than in the class head.  Hence, the
++    following contrived example is admissible:
+ <programlisting>
+   class C a b c where
+     type T c a x :: *
+@@ -6016,9 +6031,9 @@
+     <sect3 id="assoc-data-inst">
+       <title>Associated instances</title>
+       <para>
+-	When an associated data or type synonym family instance is declared within a type
+-	class instance, we (optionally) may drop the <literal>instance</literal> keyword in the
+-	family instance:
++    When an associated data or type synonym family instance is declared within a type
++    class instance, we (optionally) may drop the <literal>instance</literal> keyword in the
++    family instance:
+ <programlisting>
+ instance (GMapKey a, GMapKey b) => GMapKey (Either a b) where
+   data GMap (Either a b) v = GMapEither (GMap a v) (GMap b v)
+@@ -6035,14 +6050,14 @@
+         which coincides with the only class parameter.
+       </para>
+       <para>
+-	Instances for an associated family can only appear as part of
+-	instance declarations of the class in which the family was declared -
+-	just as with the equations of the methods of a class.  Also in
+-	correspondence to how methods are handled, declarations of associated
+-	types can be omitted in class instances.  If an associated family
+-	instance is omitted, the corresponding instance type is not inhabited;
+-	i.e., only diverging expressions, such
+-	as <literal>undefined</literal>, can assume the type.
++    Instances for an associated family can only appear as part of
++    instance declarations of the class in which the family was declared -
++    just as with the equations of the methods of a class.  Also in
++    correspondence to how methods are handled, declarations of associated
++    types can be omitted in class instances.  If an associated family
++    instance is omitted, the corresponding instance type is not inhabited;
++    i.e., only diverging expressions, such
++    as <literal>undefined</literal>, can assume the type.
+       </para>
+       <para>
+         Although it is unusual, there can be <emphasis>multiple</emphasis>
+@@ -6098,10 +6113,10 @@
+     <sect3 id="scoping-class-params">
+       <title>Scoping of class parameters</title>
+       <para>
+-	The visibility of class
+-	parameters in the right-hand side of associated family instances
+-	depends <emphasis>solely</emphasis> on the parameters of the
+-	family.  As an example, consider the simple class declaration
++    The visibility of class
++    parameters in the right-hand side of associated family instances
++    depends <emphasis>solely</emphasis> on the parameters of the
++    family.  As an example, consider the simple class declaration
+ <programlisting>
+ class C a b where
+   data T a
+@@ -6122,16 +6137,16 @@
+     <sect3><title>Instance contexts and associated type and data instances</title>
+     <para>Associated type and data instance declarations do not inherit any
+           context specified on the enclosing instance. For type instance declarations,
+-	  it is unclear what the context would mean. For data instance declarations,
+-	  it is unlikely a user would want the context repeated for every data constructor.
+-	  The only place where the context might likely be useful is in a
+-	  <literal>deriving</literal> clause of an associated data instance. However,
+-	  even here, the role of the outer instance context is murky. So, for
+-	  clarity, we just stick to the rule above: the enclosing instance context
+-	  is ignored. If you need to use
+-	  a non-trivial context on a derived instance,
+-	  use a <link linkend="stand-alone-deriving">standalone
+-	  deriving</link> clause (at the top level).
++      it is unclear what the context would mean. For data instance declarations,
++      it is unlikely a user would want the context repeated for every data constructor.
++      The only place where the context might likely be useful is in a
++      <literal>deriving</literal> clause of an associated data instance. However,
++      even here, the role of the outer instance context is murky. So, for
++      clarity, we just stick to the rule above: the enclosing instance context
++      is ignored. If you need to use
++      a non-trivial context on a derived instance,
++      use a <link linkend="stand-alone-deriving">standalone
++      deriving</link> clause (at the top level).
+     </para>
+     </sect3>
+ 
+@@ -6176,7 +6191,7 @@
+     <sect3 id="data-family-impexp-examples">
+       <title>Examples</title>
+       <para>
+-	Recall our running <literal>GMapKey</literal> class example:
++    Recall our running <literal>GMapKey</literal> class example:
+ <programlisting>
+ class GMapKey k where
+   data GMap k :: * -> *
+@@ -6189,47 +6204,47 @@
+   ...method declarations...
+ </programlisting>
+ Here are some export lists and their meaning:
+-	<itemizedlist>
+-	  <listitem>
+-	    <para><literal>module GMap( GMapKey )</literal>: Exports
+-	      just the class name.</para>
+-	  </listitem>
+-	  <listitem>
+-	    <para><literal>module GMap( GMapKey(..) )</literal>:
+-	      Exports the class, the associated type <literal>GMap</literal>
+-	      and the member
+-	      functions <literal>empty</literal>, <literal>lookup</literal>,
+-	      and <literal>insert</literal>.  The data constructors of <literal>GMap</literal>
++    <itemizedlist>
++      <listitem>
++        <para><literal>module GMap( GMapKey )</literal>: Exports
++          just the class name.</para>
++      </listitem>
++      <listitem>
++        <para><literal>module GMap( GMapKey(..) )</literal>:
++          Exports the class, the associated type <literal>GMap</literal>
++          and the member
++          functions <literal>empty</literal>, <literal>lookup</literal>,
++          and <literal>insert</literal>.  The data constructors of <literal>GMap</literal>
+               (in this case <literal>GMapEither</literal>) are not exported.</para>
+-	  </listitem>
+-	  <listitem>
+-	    <para><literal>module GMap( GMapKey( type GMap, empty, lookup, insert ) )</literal>:
++      </listitem>
++      <listitem>
++        <para><literal>module GMap( GMapKey( type GMap, empty, lookup, insert ) )</literal>:
+               Same as the previous item. Note the "<literal>type</literal>" keyword.</para>
+-	  </listitem>
+-	  <listitem>
+-	    <para><literal>module GMap( GMapKey(..), GMap(..) )</literal>:
++      </listitem>
++      <listitem>
++        <para><literal>module GMap( GMapKey(..), GMap(..) )</literal>:
+               Same as previous item, but also exports all the data
+-	      constructors for <literal>GMap</literal>, namely <literal>GMapEither</literal>.
+-	      </para>
+-	  </listitem>
+-	  <listitem>
+-	    <para><literal>module GMap ( GMapKey( empty, lookup, insert), GMap(..) )</literal>:
++          constructors for <literal>GMap</literal>, namely <literal>GMapEither</literal>.
++          </para>
++      </listitem>
++      <listitem>
++        <para><literal>module GMap ( GMapKey( empty, lookup, insert), GMap(..) )</literal>:
+               Same as previous item.</para>
+-	  </listitem>
+-	  <listitem>
+-	    <para><literal>module GMap ( GMapKey, empty, lookup, insert, GMap(..) )</literal>:
++      </listitem>
++      <listitem>
++        <para><literal>module GMap ( GMapKey, empty, lookup, insert, GMap(..) )</literal>:
+               Same as previous item.</para>
+-	  </listitem>
+-	</itemizedlist>
++      </listitem>
++    </itemizedlist>
+       </para>
+       <para>
+ Two things to watch out for:
+   <itemizedlist>
+       <listitem><para>
+         You cannot write <literal>GMapKey(type GMap(..))</literal> &mdash; i.e.,
+-	sub-component specifications cannot be nested.  To
+-	specify <literal>GMap</literal>'s data constructors, you have to list
+-	it separately.
++    sub-component specifications cannot be nested.  To
++    specify <literal>GMap</literal>'s data constructors, you have to list
++    it separately.
+       </para></listitem>
+       <listitem><para>
+   Consider this example:
+@@ -6258,9 +6273,9 @@
+     <sect3 id="data-family-impexp-instances">
+       <title>Instances</title>
+       <para>
+-	Family instances are implicitly exported, just like class instances.
+-	However, this applies only to the heads of instances, not to the data
+-	constructors an instance defines.
++    Family instances are implicitly exported, just like class instances.
++    However, this applies only to the heads of instances, not to the data
++    constructors an instance defines.
+       </para>
+     </sect3>
+ 
+@@ -6302,17 +6317,17 @@
+   (T2 i) == (T2 j) = i==j
+   _      == _      = False
+ </programlisting>
+-	Note that class instances are always for
+-	particular <emphasis>instances</emphasis> of a data family and never
+-	for an entire family as a whole.  This is for essentially the same
+-	reasons that we cannot define a toplevel function that performs
+-	pattern matching on the data constructors
+-	of <emphasis>different</emphasis> instances of a single type family.
+-	It would require a form of extensible case construct.
++    Note that class instances are always for
++    particular <emphasis>instances</emphasis> of a data family and never
++    for an entire family as a whole.  This is for essentially the same
++    reasons that we cannot define a toplevel function that performs
++    pattern matching on the data constructors
++    of <emphasis>different</emphasis> instances of a single type family.
++    It would require a form of extensible case construct.
+       </para>
+ <para>
+ Data instance declarations can also
+-	have <literal>deriving</literal> clauses.  For example, we can write
++    have <literal>deriving</literal> clauses.  For example, we can write
+ <programlisting>
+ data GMap () v = GMapUnit (Maybe v)
+                deriving Show
+@@ -6472,8 +6487,8 @@
+ An open type or data family declaration <emphasis>always</emphasis> has a
+ complete user-specified kind signature; no "<literal>::</literal>" is required:
+ <programlisting>
+-data family D1 a           	-- D1 :: * -> *
+-data family D2 (a :: k)    	-- D2 :: forall k. k -> *
++data family D1 a            -- D1 :: * -> *
++data family D2 (a :: k)     -- D2 :: forall k. k -> *
+ data family D3 (a :: k) :: *    -- D3 :: forall k. k -> *
+ type family S1 a :: k -> *      -- S1 :: forall k. * -> k -> *
+ 
+@@ -6960,59 +6975,59 @@
+ <title>The <literal>Constraint</literal> kind</title>
+ 
+ <para>
+-	Normally, <emphasis>constraints</emphasis> (which appear in types to the left of the
+-	<literal>=></literal> arrow) have a very restricted syntax. They can only be:
+-	<itemizedlist>
+-		<listitem>
+-			<para>Class constraints, e.g. <literal>Show a</literal></para>
+-		</listitem>
+-		<listitem>
+-			<para><link linkend="implicit-parameters">Implicit parameter</link> constraints,
+-				  e.g. <literal>?x::Int</literal> (with the <option>-XImplicitParams</option> flag)</para>
+-		</listitem>
+-		<listitem>
+-			<para><link linkend="equality-constraints">Equality constraints</link>,
+-				  e.g. <literal>a ~ Int</literal> (with the <option>-XTypeFamilies</option> or
+-				  <option>-XGADTs</option> flag)</para>
+-		</listitem>
+-	</itemizedlist>
+-</para>
+-
+-<para>
+-	With the <option>-XConstraintKinds</option> flag, GHC becomes more liberal in
+-	what it accepts as constraints in your program. To be precise, with this flag any
+-	<emphasis>type</emphasis> of the new kind <literal>Constraint</literal> can be used as a constraint.
+-	The following things have kind <literal>Constraint</literal>:
+-
+-	<itemizedlist>
+-		<listitem>
+-			Anything which is already valid as a constraint without the flag: saturated applications to type classes,
+-			implicit parameter and equality constraints.
+-		</listitem>
+-		<listitem>
+-			Tuples, all of whose component types have kind <literal>Constraint</literal>. So for example the
+-			type <literal>(Show a, Ord a)</literal> is of kind <literal>Constraint</literal>.
+-		</listitem>
+-		<listitem>
+-			Anything whose form is not yet know, but the user has declared to have kind <literal>Constraint</literal>
+-			(for which they need to import it from <literal>GHC.Exts</literal>).  So for example
+-			<literal>type Foo (f :: * -> Constraint) = forall b. f b => b -> b</literal> is allowed, as well as
+-			examples involving type families:
++    Normally, <emphasis>constraints</emphasis> (which appear in types to the left of the
++    <literal>=></literal> arrow) have a very restricted syntax. They can only be:
++    <itemizedlist>
++        <listitem>
++            <para>Class constraints, e.g. <literal>Show a</literal></para>
++        </listitem>
++        <listitem>
++            <para><link linkend="implicit-parameters">Implicit parameter</link> constraints,
++                  e.g. <literal>?x::Int</literal> (with the <option>-XImplicitParams</option> flag)</para>
++        </listitem>
++        <listitem>
++            <para><link linkend="equality-constraints">Equality constraints</link>,
++                  e.g. <literal>a ~ Int</literal> (with the <option>-XTypeFamilies</option> or
++                  <option>-XGADTs</option> flag)</para>
++        </listitem>
++    </itemizedlist>
++</para>
++
++<para>
++    With the <option>-XConstraintKinds</option> flag, GHC becomes more liberal in
++    what it accepts as constraints in your program. To be precise, with this flag any
++    <emphasis>type</emphasis> of the new kind <literal>Constraint</literal> can be used as a constraint.
++    The following things have kind <literal>Constraint</literal>:
++
++    <itemizedlist>
++        <listitem>
++            Anything which is already valid as a constraint without the flag: saturated applications to type classes,
++            implicit parameter and equality constraints.
++        </listitem>
++        <listitem>
++            Tuples, all of whose component types have kind <literal>Constraint</literal>. So for example the
++            type <literal>(Show a, Ord a)</literal> is of kind <literal>Constraint</literal>.
++        </listitem>
++        <listitem>
++            Anything whose form is not yet know, but the user has declared to have kind <literal>Constraint</literal>
++            (for which they need to import it from <literal>GHC.Exts</literal>).  So for example
++            <literal>type Foo (f :: * -> Constraint) = forall b. f b => b -> b</literal> is allowed, as well as
++            examples involving type families:
+ <programlisting>
+ type family Typ a b :: Constraint
+ type instance Typ Int  b = Show b
+ type instance Typ Bool b = Num b
+ 
+ func :: Typ a b => a -> b -> b
+ func = ...
+ </programlisting>
+-		</listitem>
+-	</itemizedlist>
++        </listitem>
++    </itemizedlist>
+ </para>
+ 
+ <para>
+-	Note that because constraints are just handled as types of a particular kind, this extension allows type
+-	constraint synonyms:
++    Note that because constraints are just handled as types of a particular kind, this extension allows type
++    constraint synonyms:
+ </para>
+ 
+ <programlisting>
+@@ -7022,9 +7037,9 @@
+ </programlisting>
+ 
+ <para>
+-	Presently, only standard constraints, tuples and type synonyms for those two sorts of constraint are
+-	permitted in instance contexts and superclasses (without extra flags). The reason is that permitting more general
+-	constraints can cause type checking to loop, as it would with these two programs:
++    Presently, only standard constraints, tuples and type synonyms for those two sorts of constraint are
++    permitted in instance contexts and superclasses (without extra flags). The reason is that permitting more general
++    constraints can cause type checking to loop, as it would with these two programs:
+ </para>
+ 
+ <programlisting>
+@@ -7649,9 +7664,9 @@
+ 
+     a4 :: MonadT Maybe
+     a4 = let r x = Just x
+-	     b m k = case m of
+-		       Just y -> k y
+-		       Nothing -> Nothing
++         b m k = case m of
++               Just y -> k y
++               Nothing -> Nothing
+          in
+          MkMonad r b
+ 
+@@ -8049,7 +8064,7 @@
+ 
+   h :: forall a. [a] -> a
+   h xs = case xs of
+-	    (y:ys) :: a -> y
++        (y:ys) :: a -> y
+ </programlisting>
+ The final <literal>:: [a]</literal> after the patterns of <literal>f</literal> gives the type of
+ the result of the function.  Similarly, the body of the lambda in the RHS of
+@@ -8068,7 +8083,7 @@
+ 
+   h :: forall a. [a] -> a
+   h xs = case xs of
+-	    ((y:ys) :: a) -> y
++        ((y:ys) :: a) -> y
+ </programlisting>
+ Now the signature is on the <emphasis>pattern</emphasis>; and
+ <literal>h</literal> would certainly be ill-typed (since the pattern
+@@ -8489,90 +8504,90 @@
+       <para> Template Haskell has the following new syntactic
+       constructions.  You need to use the flag
+       <option>-XTemplateHaskell</option>
+-	<indexterm><primary><option>-XTemplateHaskell</option></primary>
++    <indexterm><primary><option>-XTemplateHaskell</option></primary>
+       </indexterm>to switch these syntactic extensions on.</para>
+ 
+-	<itemizedlist>
+-	      <listitem><para>
+-		  A splice is written <literal>$x</literal>, where <literal>x</literal> is an
+-		  identifier, or <literal>$(...)</literal>, where the "..." is an arbitrary expression.
+-		  There must be no space between the "$" and the identifier or parenthesis.  This use
+-		  of "$" overrides its meaning as an infix operator, just as "M.x" overrides the meaning
+-		  of "." as an infix operator.  If you want the infix operator, put spaces around it.
+-		  </para>
+-	      <para> A splice can occur in place of
+-		  <itemizedlist>
+-		    <listitem><para> an expression; the spliced expression must
+-		    have type <literal>Q Exp</literal></para></listitem>
+-		    <listitem><para> a pattern; the spliced pattern must
+-		    have type <literal>Q Pat</literal></para></listitem>
+-		    <listitem><para> a type; the spliced expression must
+-		    have type <literal>Q Type</literal></para></listitem>
+-		    <listitem><para> a list of declarations; the spliced expression
++    <itemizedlist>
++          <listitem><para>
++          A splice is written <literal>$x</literal>, where <literal>x</literal> is an
++          identifier, or <literal>$(...)</literal>, where the "..." is an arbitrary expression.
++          There must be no space between the "$" and the identifier or parenthesis.  This use
++          of "$" overrides its meaning as an infix operator, just as "M.x" overrides the meaning
++          of "." as an infix operator.  If you want the infix operator, put spaces around it.
++          </para>
++          <para> A splice can occur in place of
++          <itemizedlist>
++            <listitem><para> an expression; the spliced expression must
++            have type <literal>Q Exp</literal></para></listitem>
++            <listitem><para> a pattern; the spliced pattern must
++            have type <literal>Q Pat</literal></para></listitem>
++            <listitem><para> a type; the spliced expression must
++            have type <literal>Q Type</literal></para></listitem>
++            <listitem><para> a list of declarations; the spliced expression
+                     must have type <literal>Q [Dec]</literal></para></listitem>
+-		    </itemizedlist>
++            </itemizedlist>
+             Inside a splice you can only call functions defined in imported modules,
+-	    not functions defined elsewhere in the same module.</para></listitem>
++        not functions defined elsewhere in the same module.</para></listitem>
+ 
+-	      <listitem><para>
+-		  A expression quotation is written in Oxford brackets, thus:
+-		  <itemizedlist>
+-		    <listitem><para> <literal>[| ... |]</literal>, or <literal>[e| ... |]</literal>,
++          <listitem><para>
++          A expression quotation is written in Oxford brackets, thus:
++          <itemizedlist>
++            <listitem><para> <literal>[| ... |]</literal>, or <literal>[e| ... |]</literal>,
+                              where the "..." is an expression;
+                              the quotation has type <literal>Q Exp</literal>.</para></listitem>
+-		    <listitem><para> <literal>[d| ... |]</literal>, where the "..." is a list of top-level declarations;
++            <listitem><para> <literal>[d| ... |]</literal>, where the "..." is a list of top-level declarations;
+                              the quotation has type <literal>Q [Dec]</literal>.</para></listitem>
+-		    <listitem><para> <literal>[t| ... |]</literal>, where the "..." is a type;
++            <listitem><para> <literal>[t| ... |]</literal>, where the "..." is a type;
+                              the quotation has type <literal>Q Type</literal>.</para></listitem>
+-		    <listitem><para> <literal>[p| ... |]</literal>, where the "..." is a pattern;
++            <listitem><para> <literal>[p| ... |]</literal>, where the "..." is a pattern;
+                              the quotation has type <literal>Q Pat</literal>.</para></listitem>
+-		  </itemizedlist></para></listitem>
+-
+-	      <listitem>
+-		<para>
+-		  A <emphasis>typed</emphasis> expression splice is written
+-		  <literal>$$x</literal>, where <literal>x</literal> is an
+-		  identifier, or <literal>$$(...)</literal>, where the "..." is
+-		  an arbitrary expression.
+-		</para>
+-		<para>
+-		  A typed expression splice can occur in place of an
+-		  expression; the spliced expression must have type <literal>Q
+-		  (TExp a)</literal>
+-		</para>
+-	      </listitem>
+-
+-	      <listitem>
+-		<para>
+-		  A <emphasis>typed</emphasis> expression quotation is written
+-		  as <literal>[|| ... ||]</literal>, or <literal>[e||
+-		  ... ||]</literal>, where the "..." is an expression; if the
+-		  "..." expression has type <literal>a</literal>, then the
+-		  quotation has type <literal>Q (TExp a)</literal>.
+-		</para>
+-
+-		<para>
+-		  Values of type <literal>TExp a</literal> may be converted to
+-		  values of type <literal>Exp</literal> using the function
+-		  <literal>unType :: TExp a -> Exp</literal>.
+-		</para>
+-	      </listitem>
+-
+-	      <listitem><para>
+-		  A quasi-quotation can appear in either a pattern context or an
+-		  expression context and is also written in Oxford brackets:
+-		  <itemizedlist>
+-		    <listitem><para> <literal>[<replaceable>varid</replaceable>| ... |]</literal>,
++          </itemizedlist></para></listitem>
++
++          <listitem>
++        <para>
++          A <emphasis>typed</emphasis> expression splice is written
++          <literal>$$x</literal>, where <literal>x</literal> is an
++          identifier, or <literal>$$(...)</literal>, where the "..." is
++          an arbitrary expression.
++        </para>
++        <para>
++          A typed expression splice can occur in place of an
++          expression; the spliced expression must have type <literal>Q
++          (TExp a)</literal>
++        </para>
++          </listitem>
++
++          <listitem>
++        <para>
++          A <emphasis>typed</emphasis> expression quotation is written
++          as <literal>[|| ... ||]</literal>, or <literal>[e||
++          ... ||]</literal>, where the "..." is an expression; if the
++          "..." expression has type <literal>a</literal>, then the
++          quotation has type <literal>Q (TExp a)</literal>.
++        </para>
++
++        <para>
++          Values of type <literal>TExp a</literal> may be converted to
++          values of type <literal>Exp</literal> using the function
++          <literal>unType :: TExp a -> Exp</literal>.
++        </para>
++          </listitem>
++
++          <listitem><para>
++          A quasi-quotation can appear in either a pattern context or an
++          expression context and is also written in Oxford brackets:
++          <itemizedlist>
++            <listitem><para> <literal>[<replaceable>varid</replaceable>| ... |]</literal>,
+                         where the "..." is an arbitrary string; a full description of the
+-			quasi-quotation facility is given in <xref linkend="th-quasiquotation"/>.</para></listitem>
+-		  </itemizedlist></para></listitem>
+-
+-	      <listitem><para>
+-		  A name can be quoted with either one or two prefix single quotes:
+-		  <itemizedlist>
+-		    <listitem><para> <literal>'f</literal> has type <literal>Name</literal>, and names the function <literal>f</literal>.
+-		  Similarly <literal>'C</literal> has type <literal>Name</literal> and names the data constructor <literal>C</literal>.
+-		  In general <literal>'</literal><replaceable>thing</replaceable>
++            quasi-quotation facility is given in <xref linkend="th-quasiquotation"/>.</para></listitem>
++          </itemizedlist></para></listitem>
++
++          <listitem><para>
++          A name can be quoted with either one or two prefix single quotes:
++          <itemizedlist>
++            <listitem><para> <literal>'f</literal> has type <literal>Name</literal>, and names the function <literal>f</literal>.
++          Similarly <literal>'C</literal> has type <literal>Name</literal> and names the data constructor <literal>C</literal>.
++          In general <literal>'</literal><replaceable>thing</replaceable>
+                   interprets <replaceable>thing</replaceable> in an expression context.</para>
+                     <para>A name whose second character is a single
+                     quote (sadly) cannot be quoted in this way,
+@@ -8585,17 +8600,17 @@
+                     by the numeric literal <literal>7</literal>. There
+                     is no current escape mechanism in this (unusual)
+                     situation.
+-		     </para></listitem>
+-		    <listitem><para> <literal>''T</literal> has type <literal>Name</literal>, and names the type constructor  <literal>T</literal>.
+-		  That is, <literal>''</literal><replaceable>thing</replaceable> interprets <replaceable>thing</replaceable> in a type context.
+-		     </para></listitem>
+-		  </itemizedlist>
+-	          These <literal>Names</literal> can be used to construct Template Haskell expressions, patterns, declarations etc.  They
+-	          may also be given as an argument to the <literal>reify</literal> function.
+-	         </para>
+-		</listitem>
+-
+-	      <listitem><para> You may omit the <literal>$(...)</literal> in a top-level declaration splice.
++             </para></listitem>
++            <listitem><para> <literal>''T</literal> has type <literal>Name</literal>, and names the type constructor  <literal>T</literal>.
++          That is, <literal>''</literal><replaceable>thing</replaceable> interprets <replaceable>thing</replaceable> in a type context.
++             </para></listitem>
++          </itemizedlist>
++              These <literal>Names</literal> can be used to construct Template Haskell expressions, patterns, declarations etc.  They
++              may also be given as an argument to the <literal>reify</literal> function.
++             </para>
++        </listitem>
++
++          <listitem><para> You may omit the <literal>$(...)</literal> in a top-level declaration splice.
+               Simply writing an expression (rather than a declaration) implies a splice.  For example, you can write
+ <programlisting>
+ module Foo where
+@@ -8612,14 +8627,14 @@
+ h z = z-1
+ </programlisting>
+             This abbreviation makes top-level declaration slices quieter and less intimidating.
+-	    </para></listitem>
+-	    
+-	    <listitem>
+-	      <para>
+-		Binders are lexically scoped. For example, consider the
+-		following code, where a value <literal>g</literal> of type
+-		<literal>Bool -> Q Pat</literal> is in scope, having been
+-		imported from another module
++        </para></listitem>
++        
++        <listitem>
++          <para>
++        Binders are lexically scoped. For example, consider the
++        following code, where a value <literal>g</literal> of type
++        <literal>Bool -> Q Pat</literal> is in scope, having been
++        imported from another module
+ <programlisting>
+ y :: Int
+ y = 7
+@@ -8631,46 +8646,46 @@
+                 <literal>f</literal> refers to the top-level <literal>y =
+                 7</literal>, even if the pattern splice <literal>$(g
+                 n)</literal> also generates a binder <literal>y</literal>.
+-	      </para>
+-
+-	      <para>
+-		Note that a pattern quasiquoter <emphasis>may</emphasis>
+-		generate binders that scope over the right-hand side of a
+-		definition because these binders are in scope lexically. For
+-		example, given a quasiquoter <literal>haskell</literal> that
+-		parses Haskell, in the following code, the <literal>y</literal>
+-		in the right-hand side of <literal>f</literal> refers to the
+-		<literal>y</literal> bound by the <literal>haskell</literal>
+-		pattern quasiquoter, <emphasis>not</emphasis> the top-level
+-		<literal>y = 7</literal>.
++          </para>
++
++          <para>
++        Note that a pattern quasiquoter <emphasis>may</emphasis>
++        generate binders that scope over the right-hand side of a
++        definition because these binders are in scope lexically. For
++        example, given a quasiquoter <literal>haskell</literal> that
++        parses Haskell, in the following code, the <literal>y</literal>
++        in the right-hand side of <literal>f</literal> refers to the
++        <literal>y</literal> bound by the <literal>haskell</literal>
++        pattern quasiquoter, <emphasis>not</emphasis> the top-level
++        <literal>y = 7</literal>.
+ <programlisting>
+ y :: Int
+ y = 7
+ 
+ f :: Int -> Int -> Int
+ f n = \ [haskell|y|] -> y+n
+ </programlisting>
+-	      </para>
+-	    </listitem>
+-	    <listitem>
+-	      <para>
+-		The type environment seen by <literal>reify</literal> includes
+-		all the top-level declaration up to the end of the immediately
+-		preceding <emphasis>declaration group</emphasis>, but no more.
+-	      </para>
++          </para>
++        </listitem>
++        <listitem>
++          <para>
++        The type environment seen by <literal>reify</literal> includes
++        all the top-level declaration up to the end of the immediately
++        preceding <emphasis>declaration group</emphasis>, but no more.
++          </para>
+ 
+-	      <para>
+-		A <emphasis>declaration group</emphasis> is the group of
+-		declarations created by a top-level declaration splice, plus
+-		those following it, down to but not including the next top-level
+-		declaration splice. The first declaration group in a module
+-		includes all top-level definitions down to but not including the
+-		first top-level declaration splice.
+-	      </para>
++          <para>
++        A <emphasis>declaration group</emphasis> is the group of
++        declarations created by a top-level declaration splice, plus
++        those following it, down to but not including the next top-level
++        declaration splice. The first declaration group in a module
++        includes all top-level definitions down to but not including the
++        first top-level declaration splice.
++          </para>
+ 
+ 
+-	      <para>
+-		Concretely, consider the following code
++          <para>
++        Concretely, consider the following code
+ <programlisting>
+ module M where
+    import ...
+@@ -8683,43 +8698,43 @@
+ 
+               In this example
+               <orderedlist>
+-		<listitem>
+-		  <para>
+-		    A <literal>reify</literal> inside the splice <literal>$(th1
+-		    ..)</literal> would see the definition of
+-		    <literal>f</literal>.
+-		  </para>
+-		</listitem>
+-		<listitem>
+-		  <para>
+-		    A <literal>reify</literal> inside the splice
+-		    <literal>$(blah1)</literal> would see the definition of
+-		    <literal>f</literal>, but would not see the definition of
+-		    <literal>h</literal>.
+-		  </para>
+-		</listitem>
+-		<listitem>
+-		  <para>
+-		    A <literal>reify</literal> inside the splice
+-		    <literal>$(th2..)</literal> would see the definition of
+-		    <literal>f</literal>, all the bindings created by
+-		    <literal>$(th1..)</literal>, and the definition of
+-		    <literal>h</literal>.
+-		  </para>
+-		</listitem>
+-		<listitem>
+-		  <para>
+-		    A <literal>reify</literal> inside the splice
+-		    <literal>$(blah2)</literal> would see the same definitions
+-		    as the splice <literal>$(th2...)</literal>.
+-		  </para>
+-		</listitem>
++        <listitem>
++          <para>
++            A <literal>reify</literal> inside the splice <literal>$(th1
++            ..)</literal> would see the definition of
++            <literal>f</literal>.
++          </para>
++        </listitem>
++        <listitem>
++          <para>
++            A <literal>reify</literal> inside the splice
++            <literal>$(blah1)</literal> would see the definition of
++            <literal>f</literal>, but would not see the definition of
++            <literal>h</literal>.
++          </para>
++        </listitem>
++        <listitem>
++          <para>
++            A <literal>reify</literal> inside the splice
++            <literal>$(th2..)</literal> would see the definition of
++            <literal>f</literal>, all the bindings created by
++            <literal>$(th1..)</literal>, and the definition of
++            <literal>h</literal>.
++          </para>
++        </listitem>
++        <listitem>
++          <para>
++            A <literal>reify</literal> inside the splice
++            <literal>$(blah2)</literal> would see the same definitions
++            as the splice <literal>$(th2...)</literal>.
++          </para>
++        </listitem>
+               </orderedlist>
+-	      </para>
+-	    </listitem>
++          </para>
++        </listitem>
+ 
+ 
+-	</itemizedlist>
++    </itemizedlist>
+ (Compared to the original paper, there are many differences of detail.
+ The syntax for a declaration splice uses "<literal>$</literal>" not "<literal>splice</literal>".
+ The type of the enclosed expression must be  <literal>Q [Dec]</literal>, not  <literal>[Q Dec]</literal>.
+@@ -8737,8 +8752,8 @@
+ 
+     <listitem><para>
+     You can only run a function at compile time if it is imported from another module.  That is,
+-	    you can't define a function in a module, and call it from within a splice in the same module.
+-	    (It would make sense to do so, but it's hard to implement.)
++        you can't define a function in a module, and call it from within a splice in the same module.
++        (It would make sense to do so, but it's hard to implement.)
+    </para></listitem>
+ 
+    <listitem><para>
+@@ -8754,20 +8769,20 @@
+    </para></listitem>
+ 
+     <listitem><para>
+-	    The flag <literal>-ddump-splices</literal> shows the expansion of all top-level splices as they happen.
++        The flag <literal>-ddump-splices</literal> shows the expansion of all top-level splices as they happen.
+    </para></listitem>
+     <listitem><para>
+-	    If you are building GHC from source, you need at least a stage-2 bootstrap compiler to
+-	      run Template Haskell.  A stage-1 compiler will reject the TH constructs.  Reason: TH
+-	      compiles and runs a program, and then looks at the result.  So it's important that
+-	      the program it compiles produces results whose representations are identical to
+-	      those of the compiler itself.
++        If you are building GHC from source, you need at least a stage-2 bootstrap compiler to
++          run Template Haskell.  A stage-1 compiler will reject the TH constructs.  Reason: TH
++          compiles and runs a program, and then looks at the result.  So it's important that
++          the program it compiles produces results whose representations are identical to
++          those of the compiler itself.
+    </para></listitem>
+ </itemizedlist>
+ </para>
+ <para> Template Haskell works in any mode (<literal>--make</literal>, <literal>--interactive</literal>,
+-	or file-at-a-time).  There used to be a restriction to the former two, but that restriction
+-	has been lifted.
++    or file-at-a-time).  There used to be a restriction to the former two, but that restriction
++    has been lifted.
+ </para>
+ </sect2>
+ 
+@@ -9722,8 +9737,8 @@
+ <itemizedlist><listitem><para>Matching
+ the pattern <literal>!pat</literal> against a value <literal>v</literal> behaves as follows:
+ <itemizedlist><listitem><para>if <literal>v</literal> is bottom, the match diverges</para></listitem>
+-		<listitem><para>otherwise, <literal>pat</literal> is matched against
+-		<literal>v</literal></para></listitem>
++        <listitem><para>otherwise, <literal>pat</literal> is matched against
++        <literal>v</literal></para></listitem>
+ </itemizedlist>
+ </para></listitem></itemizedlist>
+ Similarly, in Figure 4 of  <ulink url="http://www.haskell.org/onlinereport/exps.html#sect3.17.3">
+@@ -9884,22 +9899,22 @@
+     <para>Certain pragmas are <emphasis>file-header pragmas</emphasis>:
+       <itemizedlist>
+       <listitem><para>
+-	  A file-header
+-	  pragma must precede the <literal>module</literal> keyword in the file.
+-	  </para></listitem>
++      A file-header
++      pragma must precede the <literal>module</literal> keyword in the file.
++      </para></listitem>
+       <listitem><para>
+       There can be as many file-header pragmas as you please, and they can be
+       preceded or followed by comments.
+-	  </para></listitem>
++      </para></listitem>
+       <listitem><para>
+       File-header pragmas are read once only, before
+       pre-processing the file (e.g. with cpp).
+-	  </para></listitem>
++      </para></listitem>
+       <listitem><para>
+          The file-header pragmas are: <literal>{-# LANGUAGE #-}</literal>,
+-	<literal>{-# OPTIONS_GHC #-}</literal>, and
+-	<literal>{-# INCLUDE #-}</literal>.
+-	  </para></listitem>
++    <literal>{-# OPTIONS_GHC #-}</literal>, and
++    <literal>{-# INCLUDE #-}</literal>.
++      </para></listitem>
+       </itemizedlist>
+       </para>
+ 
+@@ -9910,31 +9925,31 @@
+       <indexterm><primary>pragma</primary><secondary>LANGUAGE</secondary></indexterm>
+ 
+       <para>The <literal>LANGUAGE</literal> pragma allows language extensions to be enabled
+-	in a portable way.
+-	It is the intention that all Haskell compilers support the
+-	<literal>LANGUAGE</literal> pragma with the same syntax, although not
+-	all extensions are supported by all compilers, of
+-	course.  The <literal>LANGUAGE</literal> pragma should be used instead
+-	of <literal>OPTIONS_GHC</literal>, if possible.</para>
++    in a portable way.
++    It is the intention that all Haskell compilers support the
++    <literal>LANGUAGE</literal> pragma with the same syntax, although not
++    all extensions are supported by all compilers, of
++    course.  The <literal>LANGUAGE</literal> pragma should be used instead
++    of <literal>OPTIONS_GHC</literal>, if possible.</para>
+ 
+       <para>For example, to enable the FFI and preprocessing with CPP:</para>
+ 
+ <programlisting>{-# LANGUAGE ForeignFunctionInterface, CPP #-}</programlisting>
+ 
+         <para><literal>LANGUAGE</literal> is a file-header pragma (see <xref linkend="pragmas"/>).</para>
+ 
+       <para>Every language extension can also be turned into a command-line flag
+-	by prefixing it with "<literal>-X</literal>"; for example <option>-XForeignFunctionInterface</option>.
+-	(Similarly, all "<literal>-X</literal>" flags can be written as <literal>LANGUAGE</literal> pragmas.)
++    by prefixing it with "<literal>-X</literal>"; for example <option>-XForeignFunctionInterface</option>.
++    (Similarly, all "<literal>-X</literal>" flags can be written as <literal>LANGUAGE</literal> pragmas.)
+       </para>
+ 
+       <para>A list of all supported language extensions can be obtained by invoking
+-	<literal>ghc --supported-extensions</literal> (see <xref linkend="modes"/>).</para>
++    <literal>ghc --supported-extensions</literal> (see <xref linkend="modes"/>).</para>
+ 
+       <para>Any extension from the <literal>Extension</literal> type defined in
+-	<ulink
+-	  url="&libraryCabalLocation;/Language-Haskell-Extension.html"><literal>Language.Haskell.Extension</literal></ulink>
+-	may be used.  GHC will report an error if any of the requested extensions are not supported.</para>
++    <ulink
++      url="&libraryCabalLocation;/Language-Haskell-Extension.html"><literal>Language.Haskell.Extension</literal></ulink>
++    may be used.  GHC will report an error if any of the requested extensions are not supported.</para>
+     </sect2>
+ 
+ 
+@@ -9951,7 +9966,7 @@
+       details.</para>
+ 
+       <para>Previous versions of GHC accepted <literal>OPTIONS</literal> rather
+-	than <literal>OPTIONS_GHC</literal>, but that is now deprecated.</para>
++    than <literal>OPTIONS_GHC</literal>, but that is now deprecated.</para>
+     </sect2>
+ 
+         <para><literal>OPTIONS_GHC</literal> is a file-header pragma (see <xref linkend="pragmas"/>).</para>
+@@ -9978,8 +9993,8 @@
+       There are two ways of using these pragmas.
+ 
+       <itemizedlist>
+-	<listitem>
+-	  <para>You can work on an entire module thus:</para>
++    <listitem>
++      <para>You can work on an entire module thus:</para>
+ <programlisting>
+    module Wibble {-# DEPRECATED "Use Wobble instead" #-} where
+      ...
+@@ -9989,30 +10004,30 @@
+    module Wibble {-# WARNING "This is an unstable interface." #-} where
+      ...
+ </programlisting>
+-	  <para>When you compile any module that import
++      <para>When you compile any module that import
+           <literal>Wibble</literal>, GHC will print the specified
+           message.</para>
+-	</listitem>
++    </listitem>
+ 
+-	<listitem>
+-	  <para>You can attach a warning to a function, class, type, or data constructor, with the
+-	  following top-level declarations:</para>
++    <listitem>
++      <para>You can attach a warning to a function, class, type, or data constructor, with the
++      following top-level declarations:</para>
+ <programlisting>
+    {-# DEPRECATED f, C, T "Don't use these" #-}
+    {-# WARNING unsafePerformIO "This is unsafe; I hope you know what you're doing" #-}
+ </programlisting>
+-	  <para>When you compile any module that imports and uses any
++      <para>When you compile any module that imports and uses any
+           of the specified entities, GHC will print the specified
+           message.</para>
+-	  <para> You can only attach to entities declared at top level in the module
+-	  being compiled, and you can only use unqualified names in the list of
+-	  entities. A capitalised name, such as <literal>T</literal>
+-	  refers to <emphasis>either</emphasis> the type constructor <literal>T</literal>
+-	  <emphasis>or</emphasis> the data constructor <literal>T</literal>, or both if
+-	  both are in scope.  If both are in scope, there is currently no way to
++      <para> You can only attach to entities declared at top level in the module
++      being compiled, and you can only use unqualified names in the list of
++      entities. A capitalised name, such as <literal>T</literal>
++      refers to <emphasis>either</emphasis> the type constructor <literal>T</literal>
++      <emphasis>or</emphasis> the data constructor <literal>T</literal>, or both if
++      both are in scope.  If both are in scope, there is currently no way to
+       specify one without the other (c.f. fixities
+       <xref linkend="infix-tycons"/>).</para>
+-	</listitem>
++    </listitem>
+       </itemizedlist>
+       Warnings and deprecations are not reported for
+       (a) uses within the defining module,
+@@ -10070,8 +10085,8 @@
+       definitions.</para>
+ 
+       <sect3 id="inline-pragma">
+-	<title>INLINE pragma</title>
+-	<indexterm><primary>INLINE</primary></indexterm>
++    <title>INLINE pragma</title>
++    <indexterm><primary>INLINE</primary></indexterm>
+ 
+         <para>
+           GHC (with <option>-O</option>, as always) tries to inline
+@@ -10113,7 +10128,7 @@
+         is to declare a function's &ldquo;cost&rdquo; to be very low.
+         The normal unfolding machinery will then be very keen to
+         inline it.  However, an <literal>INLINE</literal> pragma for a
+-	function "<literal>f</literal>" has a number of other effects:
++    function "<literal>f</literal>" has a number of other effects:
+ <itemizedlist>
+ <listitem><para>
+ While GHC is keen to inline the function, it does not do so
+@@ -10189,11 +10204,11 @@
+ For example, for a self-recursive function, the loop breaker can only be the function
+ itself, so an INLINE pragma is always ignored.</para>
+ 
+-	<para>Syntactically, an <literal>INLINE</literal> pragma for a
++    <para>Syntactically, an <literal>INLINE</literal> pragma for a
+         function can be put anywhere its type signature could be
+         put.</para>
+ 
+-	<para><literal>INLINE</literal> pragmas are a particularly
++    <para><literal>INLINE</literal> pragmas are a particularly
+         good idea for the
+         <literal>then</literal>/<literal>return</literal> (or
+         <literal>bind</literal>/<literal>unit</literal>) functions in
+@@ -10205,14 +10220,14 @@
+ {-# INLINE returnUs #-}
+ </programlisting>
+ 
+-	<para>See also the <literal>NOINLINE</literal> (<xref linkend="noinline-pragma"/>)
++    <para>See also the <literal>NOINLINE</literal> (<xref linkend="noinline-pragma"/>)
+         and <literal>INLINABLE</literal> (<xref linkend="inlinable-pragma"/>)
+         pragmas.</para>
+ 
+       </sect3>
+ 
+       <sect3 id="inlinable-pragma">
+-	<title>INLINABLE pragma</title>
++    <title>INLINABLE pragma</title>
+ 
+ <para>An <literal>{-# INLINABLE f #-}</literal> pragma on a
+ function <literal>f</literal> has the following behaviour:
+@@ -10263,70 +10278,70 @@
+       </sect3>
+ 
+       <sect3 id="noinline-pragma">
+-	<title>NOINLINE pragma</title>
++    <title>NOINLINE pragma</title>
+ 
+-	<indexterm><primary>NOINLINE</primary></indexterm>
+-	<indexterm><primary>NOTINLINE</primary></indexterm>
++    <indexterm><primary>NOINLINE</primary></indexterm>
++    <indexterm><primary>NOTINLINE</primary></indexterm>
+ 
+-	<para>The <literal>NOINLINE</literal> pragma does exactly what
++    <para>The <literal>NOINLINE</literal> pragma does exactly what
+         you'd expect: it stops the named function from being inlined
+         by the compiler.  You shouldn't ever need to do this, unless
+         you're very cautious about code size.</para>
+ 
+-	<para><literal>NOTINLINE</literal> is a synonym for
++    <para><literal>NOTINLINE</literal> is a synonym for
+         <literal>NOINLINE</literal> (<literal>NOINLINE</literal> is
+         specified by Haskell 98 as the standard way to disable
+         inlining, so it should be used if you want your code to be
+         portable).</para>
+       </sect3>
+ 
+       <sect3 id="conlike-pragma">
+-	<title>CONLIKE modifier</title>
+-	<indexterm><primary>CONLIKE</primary></indexterm>
++    <title>CONLIKE modifier</title>
++    <indexterm><primary>CONLIKE</primary></indexterm>
+         <para>An INLINE or NOINLINE pragma may have a CONLIKE modifier,
+         which affects matching in RULEs (only).  See <xref linkend="conlike"/>.
+         </para>
+       </sect3>
+ 
+       <sect3 id="phase-control">
+-	<title>Phase control</title>
++    <title>Phase control</title>
+ 
+-	<para> Sometimes you want to control exactly when in GHC's
++    <para> Sometimes you want to control exactly when in GHC's
+         pipeline the INLINE pragma is switched on.  Inlining happens
+         only during runs of the <emphasis>simplifier</emphasis>.  Each
+         run of the simplifier has a different <emphasis>phase
+         number</emphasis>; the phase number decreases towards zero.
+         If you use <option>-dverbose-core2core</option> you'll see the
+         sequence of phase numbers for successive runs of the
+         simplifier.  In an INLINE pragma you can optionally specify a
+         phase number, thus:
+-	<itemizedlist>
+-	  <listitem>
+-	    <para>"<literal>INLINE[k] f</literal>" means: do not inline
+-	    <literal>f</literal>
+-	      until phase <literal>k</literal>, but from phase
+-	      <literal>k</literal> onwards be very keen to inline it.
++    <itemizedlist>
++      <listitem>
++        <para>"<literal>INLINE[k] f</literal>" means: do not inline
++        <literal>f</literal>
++          until phase <literal>k</literal>, but from phase
++          <literal>k</literal> onwards be very keen to inline it.
+             </para></listitem>
+-	  <listitem>
+-	    <para>"<literal>INLINE[~k] f</literal>" means: be very keen to inline
+-	    <literal>f</literal>
+-	      until phase <literal>k</literal>, but from phase
+-	      <literal>k</literal> onwards do not inline it.
++      <listitem>
++        <para>"<literal>INLINE[~k] f</literal>" means: be very keen to inline
++        <literal>f</literal>
++          until phase <literal>k</literal>, but from phase
++          <literal>k</literal> onwards do not inline it.
+             </para></listitem>
+-	  <listitem>
+-	    <para>"<literal>NOINLINE[k] f</literal>" means: do not inline
+-	    <literal>f</literal>
+-	      until phase <literal>k</literal>, but from phase
+-	      <literal>k</literal> onwards be willing to inline it (as if
+-	      there was no pragma).
++      <listitem>
++        <para>"<literal>NOINLINE[k] f</literal>" means: do not inline
++        <literal>f</literal>
++          until phase <literal>k</literal>, but from phase
++          <literal>k</literal> onwards be willing to inline it (as if
++          there was no pragma).
+             </para></listitem>
+-	    <listitem>
+-	    <para>"<literal>NOINLINE[~k] f</literal>" means: be willing to inline
+-	    <literal>f</literal>
+-	      until phase <literal>k</literal>, but from phase
+-	      <literal>k</literal> onwards do not inline it.
++        <listitem>
++        <para>"<literal>NOINLINE[~k] f</literal>" means: be willing to inline
++        <literal>f</literal>
++          until phase <literal>k</literal>, but from phase
++          <literal>k</literal> onwards do not inline it.
+             </para></listitem>
+-	</itemizedlist>
++    </itemizedlist>
+ The same information is summarised here:
+ <programlisting>
+                            -- Before phase 2     Phase 2 and later
+@@ -10351,7 +10366,7 @@
+ </itemizedlist>
+ </para>
+ <para>The same phase-numbering control is available for RULES
+-	(<xref linkend="rewrite-rules"/>).</para>
++    (<xref linkend="rewrite-rules"/>).</para>
+       </sect3>
+     </sect2>
+ 
+@@ -10411,8 +10426,8 @@
+       <para>A <literal>SPECIALIZE</literal> pragma for a function can
+       be put anywhere its type signature could be put.  Moreover, you
+       can also <literal>SPECIALIZE</literal> an <emphasis>imported</emphasis>
+-		function provided it was given an <literal>INLINABLE</literal> pragma at
+-		its definition site (<xref linkend="inlinable-pragma"/>).</para>
++        function provided it was given an <literal>INLINABLE</literal> pragma at
++        its definition site (<xref linkend="inlinable-pragma"/>).</para>
+ </listitem>
+ 
+ <listitem>
+@@ -10457,8 +10472,8 @@
+ 
+ <listitem>
+       <para>The type in a SPECIALIZE pragma can be any type that is less
+-	polymorphic than the type of the original function.  In concrete terms,
+-	if the original function is <literal>f</literal> then the pragma
++    polymorphic than the type of the original function.  In concrete terms,
++    if the original function is <literal>f</literal> then the pragma
+ <programlisting>
+   {-# SPECIALIZE f :: &lt;type&gt; #-}
+ </programlisting>
+diff --git a/testsuite/tests/driver/T4437.hs b/testsuite/tests/driver/T4437.hs
+--- a/testsuite/tests/driver/T4437.hs
++++ b/testsuite/tests/driver/T4437.hs
+@@ -34,7 +34,8 @@
+                              "AlternativeLayoutRule",
+                              "AlternativeLayoutRuleTransitional",
+                              "JavaScriptFFI",
+-                             "PatternSynonyms"]
++                             "PatternSynonyms",
++                             "DysfunctionalDependencies"]
+ 
+ expectedCabalOnlyExtensions :: [String]
+ expectedCabalOnlyExtensions = ["Generics",
+
+
